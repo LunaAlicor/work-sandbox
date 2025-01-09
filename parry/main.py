@@ -8,7 +8,7 @@ import os
 import threading
 
 TEMPLATE_FOLDER = "templates/"
-THRESHOLD = 0.35
+THRESHOLD = 0.4
 KEY_TO_PRESS = "c"
 SLEEP_INTERVAL = 0.03
 SAVE_PATH = "matches/"
@@ -130,11 +130,25 @@ def match_template(screen: np.ndarray, template: np.ndarray) -> tuple[bool, Sequ
             tuple[int, int]: Top-left coordinates of the detected match.
             float: Confidence score of the match.
     """
-    gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
-    result = cv2.matchTemplate(gray_screen, template, cv2.TM_CCOEFF_NORMED)
-    _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    match = max_val >= THRESHOLD
-    return match, max_loc, max_val
+    try:
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        gpu_screen = cv2.cuda_GpuMat()
+        gpu_screen.upload(gray_screen)
+
+        gpu_template = cv2.cuda_GpuMat()
+        gpu_template.upload(template)
+
+        result = cv2.cuda.createTemplateMatching(cv2.CV_32F).match(gpu_screen, gpu_template)
+        result_host = result.download()
+        _, max_val, _, max_loc = cv2.minMaxLoc(result_host)
+        match = max_val >= THRESHOLD
+        return match, max_loc, max_val
+    except Exception:
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        result = cv2.matchTemplate(gray_screen, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        match = max_val >= THRESHOLD
+        return match, max_loc, max_val
 
 
 def save_matched_area(screen: np.ndarray, location: Sequence[int], template_shape: tuple[int, int], counter: int) -> None:
