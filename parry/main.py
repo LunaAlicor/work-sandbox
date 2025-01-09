@@ -17,7 +17,7 @@ color_setting_running = False
 
 def capture_screen() -> np.ndarray:
     """
-    Captures a screenshot of the screen.
+    Captures a screenshot of the screen and resize it.
 
     Returns:
         numpy.ndarray: An array representing the screen image.
@@ -25,6 +25,7 @@ def capture_screen() -> np.ndarray:
     screenshot = pyautogui.screenshot()
     frame = np.array(screenshot)
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    frame = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2))
     return frame
 
 
@@ -129,11 +130,25 @@ def match_template(screen: np.ndarray, template: np.ndarray) -> tuple[bool, Sequ
             tuple[int, int]: Top-left coordinates of the detected match.
             float: Confidence score of the match.
     """
-    gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
-    result = cv2.matchTemplate(gray_screen, template, cv2.TM_CCOEFF_NORMED)
-    _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    match = max_val >= THRESHOLD
-    return match, max_loc, max_val
+    try:
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        gpu_screen = cv2.cuda_GpuMat()
+        gpu_screen.upload(gray_screen)
+
+        gpu_template = cv2.cuda_GpuMat()
+        gpu_template.upload(template)
+
+        result = cv2.cuda.createTemplateMatching(cv2.CV_32F).match(gpu_screen, gpu_template)
+        result_host = result.download()
+        _, max_val, _, max_loc = cv2.minMaxLoc(result_host)
+        match = max_val >= THRESHOLD
+        return match, max_loc, max_val
+    except Exception:
+        gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        result = cv2.matchTemplate(gray_screen, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        match = max_val >= THRESHOLD
+        return match, max_loc, max_val
 
 
 def save_matched_area(screen: np.ndarray, location: Sequence[int], template_shape: tuple[int, int], counter: int) -> None:
@@ -160,8 +175,8 @@ if __name__ == '__main__':
     templates = load_templates()
     print(f"Loaded {len(templates)} templates. Starting screen monitoring...")
     time.sleep(2)
-    h_min = np.array([24, 0, 185])
-    h_max = np.array([111, 195, 222])
+    h_min = np.array([82, 70, 144])
+    h_max = np.array([133, 255, 255])
     counter = 0
 
     while True:
