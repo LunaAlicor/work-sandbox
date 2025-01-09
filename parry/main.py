@@ -8,7 +8,7 @@ import os
 import threading
 
 TEMPLATE_FOLDER = "templates/"
-THRESHOLD = 0.4
+THRESHOLD = 0.35
 KEY_TO_PRESS = "c"
 SLEEP_INTERVAL = 0.03
 SAVE_PATH = "matches/"
@@ -17,7 +17,7 @@ color_setting_running = False
 
 def capture_screen() -> np.ndarray:
     """
-    Captures a screenshot of the screen.
+    Captures a screenshot of the screen and resize it.
 
     Returns:
         numpy.ndarray: An array representing the screen image.
@@ -25,6 +25,7 @@ def capture_screen() -> np.ndarray:
     screenshot = pyautogui.screenshot()
     frame = np.array(screenshot)
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    frame = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2))
     return frame
 
 
@@ -160,8 +161,8 @@ if __name__ == '__main__':
     templates = load_templates()
     print(f"Loaded {len(templates)} templates. Starting screen monitoring...")
     time.sleep(2)
-    h_min = np.array([24, 0, 185])
-    h_max = np.array([111, 195, 222])
+    h_min = np.array([82, 70, 144])
+    h_max = np.array([133, 255, 255])
     counter = 0
 
     while True:
