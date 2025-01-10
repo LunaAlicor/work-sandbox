@@ -15,18 +15,60 @@ SAVE_PATH = "matches/"
 color_setting_running = False
 
 
-def capture_screen() -> np.ndarray:
-    """
-    Captures a screenshot of the screen and resize it.
+class GrabberOBS:
+    type = "obs_vc"
+    device = None
 
-    Returns:
-        numpy.ndarray: An array representing the screen image.
-    """
-    screenshot = pyautogui.screenshot()
-    frame = np.array(screenshot)
-    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-    frame = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2))
-    return frame
+    def obs_vc_init(self, capture_device=0):
+        """
+        Инициализирует захват видео с устройства.
+        По умолчанию используется устройство с индексом 0.
+        """
+        self.device = cv2.VideoCapture(capture_device)
+        if not self.device.isOpened():
+            raise ValueError("Не удалось открыть устройство захвата видео.")
+
+    def get_image(self, grab_area=None):
+        """
+        Захватывает кадр с устройства.
+
+        Args:
+            grab_area (tuple, optional): Область захвата (x, y, width, height).
+                                         Если None, возвращается полный кадр.
+        Returns:
+            numpy.ndarray: Захваченный кадр.
+        """
+        ret, frame = self.device.read()
+        if not ret:
+            raise RuntimeError("Не удалось получить кадр с устройства.")
+
+        if grab_area:
+            x, y, w, h = grab_area
+            frame = frame[y:y+h, x:x+w]
+
+        return frame
+
+    def release(self):
+        """
+        Освобождает устройство захвата.
+        """
+        if self.device:
+            self.device.release()
+
+
+
+# def capture_screen() -> np.ndarray:
+#     """
+#     Captures a screenshot of the screen and resize it.
+#
+#     Returns:
+#         numpy.ndarray: An array representing the screen image.
+#     """
+#     screenshot = pyautogui.screenshot()
+#     frame = np.array(screenshot)
+#     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+#     frame = cv2.resize(frame, (frame.shape[1] // 2, frame.shape[0] // 2))
+#     return frame
 
 
 def isolate_color(image: np.ndarray, h_min: np.ndarray, h_max: np.ndarray) -> np.ndarray:
@@ -171,40 +213,49 @@ def save_matched_area(screen: np.ndarray, location: Sequence[int], template_shap
 
 
 if __name__ == '__main__':
-    cv2.namedWindow("result", cv2.WINDOW_NORMAL)
-    templates = load_templates()
-    print(f"Loaded {len(templates)} templates. Starting screen monitoring...")
-    time.sleep(2)
-    h_min = np.array([82, 70, 144])
-    h_max = np.array([133, 255, 255])
-    counter = 0
+    grabber = GrabberOBS()
+    try:
+        grabber.obs_vc_init(capture_device=0)
+        grabber.device.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        grabber.device.set(cv2.CAP_PROP_FRAME_HEIGHT, 720 )
 
-    while True:
-        if keyboard.is_pressed("end"):
-            print("Terminating on user request ('end' key pressed).")
-            break
-        elif keyboard.is_pressed("home"):
-            start_color_setting()
+        cv2.namedWindow("result", cv2.WINDOW_NORMAL)
+        templates = load_templates()
+        print(f"Loaded {len(templates)} templates. Starting screen monitoring...")
+        time.sleep(2)
+        h_min = np.array([82, 70, 144])
+        h_max = np.array([133, 255, 255])
+        counter = 0
 
-        img = capture_screen()
-        blue_only = isolate_color(img, h_min, h_max)
-
-        for idx, template in enumerate(templates):
-            match, location, max_val = match_template(blue_only, template)
-            if match:
-                counter += 1
-                print(f"Match {counter} found with template {idx + 1} (confidence: {max_val:.2f})")
-                save_matched_area(blue_only, location, template.shape, counter)
-                keyboard.press_and_release(KEY_TO_PRESS)
-                time.sleep(1)
+        while True:
+            if keyboard.is_pressed("end"):
+                print("Terminating on user request ('end' key pressed).")
                 break
-        else:
-            time.sleep(SLEEP_INTERVAL)
+            elif keyboard.is_pressed("home"):
+                start_color_setting()
 
-        cv2.imshow("result", blue_only)
-        ch = cv2.waitKey(1)
-        if ch == 27:
-            break
+            img = grabber.get_image()
+            blue_only = isolate_color(img, h_min, h_max)
 
-    color_setting_running = False
-    cv2.destroyAllWindows()
+            for idx, template in enumerate(templates):
+                match, location, max_val = match_template(blue_only, template)
+                if match:
+                    counter += 1
+                    print(f"Match {counter} found with template {idx + 1} (confidence: {max_val:.2f})")
+                    save_matched_area(blue_only, location, template.shape, counter)
+                    keyboard.press_and_release(KEY_TO_PRESS)
+                    time.sleep(1)
+                    break
+            else:
+                time.sleep(SLEEP_INTERVAL)
+
+            cv2.imshow("result", blue_only)
+            ch = cv2.waitKey(1)
+            if ch == 27:
+                break
+
+        color_setting_running = False
+        cv2.destroyAllWindows()
+    finally:
+        grabber.release()
+        cv2.destroyAllWindows()
