@@ -226,6 +226,8 @@ if __name__ == '__main__':
         h_min = np.array([82, 70, 144])
         h_max = np.array([133, 255, 255])
         counter = 0
+        prev_frame_time = 0
+        new_frame_time = 0
 
         while True:
             if keyboard.is_pressed("end"):
@@ -249,6 +251,16 @@ if __name__ == '__main__':
             else:
                 time.sleep(SLEEP_INTERVAL)
 
+            # Вычисление FPS
+            new_frame_time = time.time()
+            fps = 1 / (new_frame_time - prev_frame_time) if prev_frame_time else 0
+            prev_frame_time = new_frame_time
+
+            # Отображение FPS на изображении
+            fps_text = f"FPS: {int(fps)}"
+            cv2.putText(blue_only, fps_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
+            # Отображение результата
             cv2.imshow("result", blue_only)
             ch = cv2.waitKey(1)
             if ch == 27:
