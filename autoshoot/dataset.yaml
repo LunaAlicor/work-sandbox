@@ -1,0 +1,5 @@
+train: C:\Users\vasheremetev\PycharmProjects\PythonProject\autotests\autoshoot\dataset\images\train
+val: C:\Users\vasheremetev\PycharmProjects\PythonProject\autotests\autoshoot\dataset\images\val
+
+nc: 2
+names: ['TW', 'TWH']
