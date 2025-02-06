@@ -1,3 +1,5 @@
+import difflib
+
 import cv2
 import numpy as np
 import keyboard
@@ -7,18 +9,14 @@ from colorama import Fore, init
 import sys
 import pyautogui
 import datetime
+import win32gui
+from pywinauto import Application
 
 init(autoreset=True)
 
 
-def timer(func):
-    def wrapped(*args, **kwargs):
-        start = datetime.datetime.now()
-        answer = func(*args, **kwargs)
-        res_time = datetime.datetime.now() - start
-        print(f"Время загрузки: {res_time}")
-        return answer
-    return wrapped
+class CrashError(Exception):
+    pass
 
 
 class GrabberOBS:
@@ -39,6 +37,75 @@ class GrabberOBS:
     def release(self):
         if self.device:
             self.device.release()
+
+
+def get_all_windows():
+    windows = []
+    def enum_handler(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if title:
+                windows.append(title)
+    win32gui.EnumWindows(enum_handler, None)
+    return windows
+
+def find_closest_window(target_name):
+    windows = get_all_windows()
+    matches = difflib.get_close_matches(target_name, windows, n=1, cutoff=0.5)
+    return matches[0] if matches else None
+
+def get_window_bbox(window_name):
+    best_match = find_closest_window(window_name)
+    if best_match:
+        hwnd = win32gui.FindWindow(None, best_match)
+        if hwnd:
+            rect = win32gui.GetWindowRect(hwnd)
+            return {
+                "top": rect[1], "left": rect[0],
+                "width": rect[2] - rect[0], "height": rect[3] - rect[1]
+            }
+    return None
+
+def capture_window(window_name):
+    bbox = get_window_bbox(window_name)
+    if bbox:
+        return np.array(pyautogui.screenshot(region=(
+            bbox["left"], bbox["top"], bbox["width"], bbox["height"]
+        )))
+    return None
+
+def send_key_to_wwz(key, window_name):
+    try:
+        best_match = find_closest_window(window_name)
+        if not best_match:
+            print(f"Окно, похожее на '{window_name}', не найдено.")
+            return
+        app = Application().connect(title=best_match)
+        wwz_window = app.window(title=best_match)
+        wwz_window.send_keystrokes(key)
+    except Exception as e:
+        print(f"Ошибка отправки клавиши: {e}")
+
+
+def detect_crash_screen(screen):
+    crash_template = cv2.imread('crash1.png', 0)
+    screen_gray = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+    res = cv2.matchTemplate(screen_gray, crash_template, cv2.TM_CCOEFF_NORMED)
+    threshold = 0.8
+    loc = np.where(res >= threshold)
+    if np.any(loc):
+        return True
+    return False
+
+
+def timer(func):
+    def wrapped(*args, **kwargs):
+        start = datetime.datetime.now()
+        answer = func(*args, **kwargs)
+        res_time = datetime.datetime.now() - start
+        print(f"Время загрузки: {res_time}")
+        return answer
+    return wrapped
 
 
 def press_enter():
@@ -106,14 +173,18 @@ def wait_loading(episode_num, chapter_num, scene_name):
             break
         # screen = grabber.get_image()
         screen = np.array(pyautogui.screenshot())
-        similarity = compare_psnr(screen, image_path)
-        if similarity >= 20:
-            similarity_reached = True
-        if similarity_reached and similarity < 20:
-            print("\n", Fore.GREEN + scene_name)
-            break
-        sys.stdout.write(f"\rСходство: {similarity}%")
-        sys.stdout.flush()
+        if detect_crash_screen(screen):
+            print("\n", Fore.RED + scene_name)
+            raise CrashError
+        else:
+            similarity = compare_psnr(screen, image_path)
+            if similarity >= 20:
+                similarity_reached = True
+            if similarity_reached and similarity < 20:
+                print("\n", Fore.GREEN + scene_name)
+                break
+            sys.stdout.write(f"\rСходство: {similarity}%")
+            sys.stdout.flush()
     print()
 
 
@@ -145,8 +216,11 @@ def skip_intro():
 
 def back_to_menu():
     press_key("esc")
+    time.sleep(0.5)
     press_key("down", 2)
+    time.sleep(0.5)
     press_key("enter", 2)
+    time.sleep(0.5)
 
 
 def play_episode(episode_num, episode_name, chapters):
@@ -162,7 +236,7 @@ def play_episode(episode_num, episode_name, chapters):
         press_key("enter", 1)
         time.sleep(1)
         press_key("enter", 1)
-        time.sleep(1)
+        time.sleep(5)
         wait_loading(episode_num, chapter_index+1, f"{episode_name} - {chapter_name}")
         time.sleep(1)
         skip_intro()
@@ -174,12 +248,14 @@ def play_episode(episode_num, episode_name, chapters):
 
 
 if __name__ == "__main__":
-    grabber = GrabberOBS()
-    grabber.device.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    grabber.device.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    cv2.namedWindow("result", cv2.WINDOW_NORMAL)
-    time.sleep(10)
+    # grabber = GrabberOBS()
+    # grabber.device.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    # grabber.device.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    # cv2.namedWindow("result", cv2.WINDOW_NORMAL)
+    time.sleep(5)
     LOADSCREENS_FOLDER = os.path.join(os.getcwd(), "loadingscreens")
+    print("Можно начинать")
+    win_name = ""
 
     check_tree = {
         "кампания": {
@@ -221,24 +297,25 @@ if __name__ == "__main__":
                     "гудящие провода": False,
                     "атомный альянс": False,
                 },
-                "эпизод 8: финикс": {
-                    "обходной путь": False,
-                    "запертые в темпе": False,
-                    "борьба за дом": False,
-                },
-                "эпизод 9: вегас": {
-                    "плохая раздача": False,
-                    "вынужденные ставки": False,
-                    "финальный стол": False,
-                },
             }
         }
     }
     while True:
         if keyboard.is_pressed('home'):
             break
-
-    for episode_index, (episode_name, chapters) in enumerate(check_tree["кампания"]["не в сети"].items(), start=1):
-        play_episode(episode_index, episode_name, chapters)
-
-    grabber.release()
+    start = datetime.datetime.now()
+    try:
+        for episode_index, (episode_name, chapters) in enumerate(check_tree["кампания"]["не в сети"].items(), start=1):
+            play_episode(episode_index, episode_name, chapters)
+        # grabber.release()
+        end = datetime.datetime.now()
+    except CrashError:
+        end = datetime.datetime.now()
+        print("Произошел crash")
+    finally:
+        if not end:
+            end = datetime.datetime.now()
+        print(f"Общее время проверки {end-start}")
+        while True:
+            if keyboard.is_pressed("end"):
+                break
