@@ -41,6 +41,7 @@ class GrabberOBS:
 
 def get_all_windows():
     windows = []
+
     def enum_handler(hwnd, _):
         if win32gui.IsWindowVisible(hwnd):
             title = win32gui.GetWindowText(hwnd)
@@ -49,10 +50,12 @@ def get_all_windows():
     win32gui.EnumWindows(enum_handler, None)
     return windows
 
+
 def find_closest_window(target_name):
     windows = get_all_windows()
     matches = difflib.get_close_matches(target_name, windows, n=1, cutoff=0.5)
     return matches[0] if matches else None
+
 
 def get_window_bbox(window_name):
     best_match = find_closest_window(window_name)
@@ -66,6 +69,7 @@ def get_window_bbox(window_name):
             }
     return None
 
+
 def capture_window(window_name):
     bbox = get_window_bbox(window_name)
     if bbox:
@@ -73,6 +77,7 @@ def capture_window(window_name):
             bbox["left"], bbox["top"], bbox["width"], bbox["height"]
         )))
     return None
+
 
 def send_key_to_wwz(key, window_name):
     try:
